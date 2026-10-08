@@ -98,7 +98,7 @@ The [Lutron Pico media button](blueprints/automation/pico_media_button.yaml) blu
 | Hold | Volume keeps rising until released | Volume keeps falling until released |
 | Double tap | Next source | Power off |
 
-Releases are triggers (restart mode), so a hold always stops when the button is let go, and a hold is capped at a number of steps in case a release is lost. A tap acts after a short double-tap window (0.3 s by default), so a double tap never nudges the volume first. Timing is adjustable in the blueprint's *Timing* section. Works with any `media_player`, not just Symetrix zones.
+Releases are triggers (restart mode), so a hold always stops when the button is let go, and a hold is capped at a number of steps in case a release is lost. A tap acts after a short double-tap window (0.6 s by default), so a double tap never nudges the volume first. Timing is adjustable in the blueprint's *Timing* section. Works with any `media_player`, not just Symetrix zones.
 
 ## Notes and limitations
 

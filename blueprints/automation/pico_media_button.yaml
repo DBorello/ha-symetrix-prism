@@ -63,8 +63,9 @@ blueprint:
           name: Double-tap window
           description: >-
             Time after a tap's release in which a second press makes it a
-            double tap. Taps act after this delay.
-          default: 0.3
+            double tap. Taps act after this delay. Real Pico double taps
+            measured ~0.45 s from release to the next press.
+          default: 0.6
           selector:
             number:
               min: 0.15
