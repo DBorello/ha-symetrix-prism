@@ -69,16 +69,16 @@ Afterwards:
 
 ## Composer setup
 
-Assign a control number to each zone control and enable **Push** on it. With the default layout:
+Per zone, the DSP needs a **Matrix Selector output** (its Mute is the zone's power, its input selection the source) feeding a **Gain module** (Master Fader = volume, Master Mute = mute), each control with a control number and **Push** enabled. With the default layout:
 
 | Control | Composer control | Control number | Values |
 | --- | --- | --- | --- |
 | Power | Stereo Matrix Selector → Output *n* Mute | 2000 + zone | 65535 = off, 0 = on |
-| Source | Stereo Matrix Selector → Output *n* Input Source | 2100 + zone | input index (0, 1, …) |
-| Volume | Zone volume → Master Fader | 2200 + zone | fader −72 … +12 dB |
-| Mute | Zone volume → Master Mute | 2300 + zone | 65535 = muted |
+| Source | Stereo Matrix Selector → Output *n* input source | 2100 + zone | input index (0, 1, …) |
+| Volume | Zone Gain → Master Fader | 2200 + zone | fader −72 … +12 dB |
+| Mute | Zone Gain → Master Mute | 2300 + zone | 65535 = muted |
 
-Any other layout works — change the bases under *Configure*, or set explicit numbers per zone.
+**See [docs/composer-setup.md](docs/composer-setup.md)** for the full signal flow, module settings, how to assign control numbers and enable push, and a checklist.
 
 ## Entities
 
