@@ -19,8 +19,10 @@ from custom_components.symetrix_prism.protocol import (
 )
 from tools.mock_prism import MockPrism
 
-# The client talks to the mock DSP over localhost TCP.
-pytestmark = pytest.mark.enable_socket
+
+@pytest.fixture(autouse=True)
+def allow_sockets(socket_enabled: None) -> None:
+    """The client talks to the mock DSP over localhost TCP."""
 
 
 async def until(predicate: Callable[[], bool], timeout: float = 2.0) -> None:
