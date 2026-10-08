@@ -1,0 +1,276 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Symetrix DSP",
+        "description": "Connect to the control port of a Symetrix Composer DSP (Prism, Radius, Edge).",
+        "data": {
+          "name": "Name",
+          "host": "Host",
+          "port": "Port",
+          "create_defaults": "Create default zones and sources"
+        },
+        "data_description": {
+          "host": "IP address of the DSP's control port (not its Dante port).",
+          "port": "TCP control port, normally 48631.",
+          "create_defaults": "Add the default zones and source list. You can change them later."
+        }
+      },
+      "unassigned": {
+        "title": "Unassigned controls",
+        "description": "These control numbers are not assigned on the DSP: {controls}.\n\nAssign them in Composer (with Push enabled), or submit to continue anyway; the matching controls stay unknown until they are assigned."
+      },
+      "reconfigure": {
+        "title": "Change DSP address",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        },
+        "data_description": {
+          "host": "IP address of the DSP's control port.",
+          "port": "TCP control port, normally 48631."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the DSP."
+    },
+    "abort": {
+      "already_configured": "This DSP is already configured.",
+      "reconfigure_successful": "The DSP address was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "DSP settings",
+        "description": "Control-number layout, value mappings and sources.",
+        "data": {
+          "sources": "Sources"
+        },
+        "data_description": {
+          "sources": "One source per line as 'selector input index: name', starting at 0."
+        },
+        "sections": {
+          "layout": {
+            "name": "Control numbers",
+            "data": {
+              "base_power": "Power base",
+              "base_source": "Source base",
+              "base_volume": "Volume base",
+              "base_mute": "Mute base"
+            },
+            "data_description": {
+              "base_power": "Control number of zone N = base + N.",
+              "base_source": "Control number of zone N = base + N.",
+              "base_volume": "Control number of zone N = base + N.",
+              "base_mute": "Control number of zone N = base + N."
+            }
+          },
+          "values": {
+            "name": "Button values",
+            "data": {
+              "power_on_value": "Power on value",
+              "power_off_value": "Power off value",
+              "mute_on_value": "Muted value",
+              "mute_off_value": "Unmuted value"
+            },
+            "data_description": {
+              "power_on_value": "Raw value that means the zone is on (0 when power is an output mute).",
+              "power_off_value": "Raw value that means the zone is off.",
+              "mute_on_value": "Raw value that means muted.",
+              "mute_off_value": "Raw value that means unmuted."
+            }
+          },
+          "volume": {
+            "name": "Volume",
+            "data": {
+              "fader_min_db": "Fader minimum",
+              "fader_max_db": "Fader maximum",
+              "volume_min_db": "Volume 0% level",
+              "volume_max_db": "Volume 100% level",
+              "volume_step_db": "Volume step",
+              "turn_on_cap_db": "Turn-on volume cap"
+            },
+            "data_description": {
+              "fader_min_db": "dB at raw value 0 (the fader's minimum in Composer).",
+              "fader_max_db": "dB at raw value 65535 (the fader's maximum in Composer).",
+              "volume_min_db": "dB that Home Assistant shows as 0% volume.",
+              "volume_max_db": "dB that Home Assistant shows as 100% volume. Volume is never set above this.",
+              "volume_step_db": "Change per volume up/down press.",
+              "turn_on_cap_db": "When turning a zone on, lower its volume to this first if it is louder. Leave blank to disable."
+            }
+          },
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "model": "Model",
+              "resync_interval": "Resync interval",
+              "push_interval": "Push interval"
+            },
+            "data_description": {
+              "model": "Shown on the DSP device.",
+              "resync_interval": "Full re-read of every control, also used as a heartbeat.",
+              "push_interval": "Minimum time between pushed updates from the DSP (PUI)."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "invalid_sources": "Each source must be on its own line as 'index: name', with unique indexes (0-99) and names.",
+      "no_sources": "Enter at least one source.",
+      "on_equals_off": "On and off values must differ.",
+      "invalid_fader_range": "Fader minimum must be below the fader maximum.",
+      "invalid_volume_range": "Volume levels must be within the fader range, with 0% below 100%.",
+      "invalid_turn_on_cap": "The turn-on cap must be within the fader range and not above the 100% level."
+    }
+  },
+  "config_subentries": {
+    "zone": {
+      "initiate_flow": {
+        "user": "Add zone"
+      },
+      "entry_type": "Zone",
+      "step": {
+        "user": {
+          "title": "Zone",
+          "description": "A zone on {dsp}, shown as a media player.",
+          "data": {
+            "name": "Name",
+            "zone": "Zone number",
+            "controls": "Controls",
+            "zone_sources": "Sources",
+            "area_id": "Area"
+          },
+          "data_description": {
+            "zone": "1-100. Control numbers are the type base + this number.",
+            "controls": "Untick a control to leave it out of the media player.",
+            "zone_sources": "Sources this zone can select. None selected = all sources.",
+            "area_id": "Room the zone's speakers are in. Applied to the zone's device when the zone is created and whenever you change it here; an area set on the device page is kept."
+          },
+          "sections": {
+            "advanced": {
+              "name": "Overrides",
+              "data": {
+                "cn_power": "Power control number",
+                "cn_source": "Source control number",
+                "cn_volume": "Volume control number",
+                "cn_mute": "Mute control number",
+                "volume_min_db": "Volume 0% level",
+                "volume_max_db": "Volume 100% level",
+                "turn_on_cap_db": "Turn-on volume cap"
+              },
+              "data_description": {
+                "cn_power": "Leave blank for power base + zone.",
+                "cn_source": "Leave blank for source base + zone.",
+                "cn_volume": "Leave blank for volume base + zone.",
+                "cn_mute": "Leave blank for mute base + zone.",
+                "volume_min_db": "Leave blank to use the DSP setting.",
+                "volume_max_db": "Leave blank to use the DSP setting.",
+                "turn_on_cap_db": "Leave blank to use the DSP setting."
+              }
+            }
+          }
+        },
+        "reconfigure": {
+          "title": "Zone",
+          "description": "A zone on {dsp}, shown as a media player.",
+          "data": {
+            "name": "Name",
+            "zone": "Zone number",
+            "controls": "Controls",
+            "zone_sources": "Sources",
+            "area_id": "Area"
+          },
+          "data_description": {
+            "zone": "1-100. Control numbers are the type base + this number.",
+            "controls": "Untick a control to leave it out of the media player.",
+            "zone_sources": "Sources this zone can select. None selected = all sources.",
+            "area_id": "Room the zone's speakers are in. Applied to the zone's device when the zone is created and whenever you change it here; an area set on the device page is kept."
+          },
+          "sections": {
+            "advanced": {
+              "name": "Overrides",
+              "data": {
+                "cn_power": "Power control number",
+                "cn_source": "Source control number",
+                "cn_volume": "Volume control number",
+                "cn_mute": "Mute control number",
+                "volume_min_db": "Volume 0% level",
+                "volume_max_db": "Volume 100% level",
+                "turn_on_cap_db": "Turn-on volume cap"
+              },
+              "data_description": {
+                "cn_power": "Leave blank for power base + zone.",
+                "cn_source": "Leave blank for source base + zone.",
+                "cn_volume": "Leave blank for volume base + zone.",
+                "cn_mute": "Leave blank for mute base + zone.",
+                "volume_min_db": "Leave blank to use the DSP setting.",
+                "volume_max_db": "Leave blank to use the DSP setting.",
+                "turn_on_cap_db": "Leave blank to use the DSP setting."
+              }
+            }
+          }
+        },
+        "unassigned": {
+          "title": "Unassigned controls",
+          "description": "These control numbers are not assigned on the DSP: {controls}.\n\nAssign them in Composer (with Push enabled), or submit to continue anyway; the matching controls stay unknown until they are assigned."
+        }
+      },
+      "error": {
+        "zone_exists": "This DSP already has a zone with this number.",
+        "invalid_fader_range": "Fader minimum must be below the fader maximum.",
+        "invalid_volume_range": "Volume levels must be within the fader range, with 0% below 100%.",
+        "invalid_turn_on_cap": "The turn-on cap must be within the fader range and not above the 100% level."
+      },
+      "abort": {
+        "reconfigure_successful": "The zone was updated."
+      }
+    }
+  },
+  "selector": {
+    "control": {
+      "options": {
+        "power": "Power",
+        "source": "Source",
+        "volume": "Volume",
+        "mute": "Mute"
+      }
+    }
+  },
+  "entity": {
+    "media_player": {
+      "zone": {
+        "state_attributes": {
+          "zone": {
+            "name": "Zone"
+          },
+          "volume_db": {
+            "name": "Volume (dB)"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Cannot connect to the DSP at {host}."
+    },
+    "not_connected": {
+      "message": "Not connected to the DSP."
+    },
+    "read_failed": {
+      "message": "Reading from the DSP failed: {error}"
+    },
+    "command_failed": {
+      "message": "The DSP did not accept the command: {error}"
+    },
+    "control_disabled": {
+      "message": "The {control} control is disabled for this zone."
+    },
+    "unknown_source": {
+      "message": "Unknown source: {source}."
+    }
+  }
+}

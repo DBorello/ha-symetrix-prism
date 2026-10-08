@@ -1,0 +1,44 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # Brand images ship in custom_components/symetrix_prism/brand/.
+          ignore: brands
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: |
+          uv venv --python 3.14 .venv
+          uv pip install --python .venv/bin/python \
+            "homeassistant==2026.9.4" pytest-homeassistant-custom-component mypy ruff
+      - name: Lint
+        run: .venv/bin/ruff check . && .venv/bin/ruff format --check .
+      - name: Type check
+        run: .venv/bin/python -m mypy
+      - name: Test
+        run: .venv/bin/python -m pytest -q

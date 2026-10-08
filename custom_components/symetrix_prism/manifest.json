@@ -1,0 +1,14 @@
+{
+  "domain": "symetrix_prism",
+  "name": "Symetrix Prism",
+  "codeowners": [
+    "@DBorello"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/DBorello/ha-symetrix-prism",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/DBorello/ha-symetrix-prism/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
