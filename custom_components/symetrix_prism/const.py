@@ -67,6 +67,9 @@ MAX_SOURCE_INDEX: Final = 99
 
 # Time to collect volume slider moves before writing the last one.
 VOLUME_DEBOUNCE_SECONDS: Final = 0.1
+# After a write, pushed values for that control that differ from what was
+# written are stale echoes of earlier values for this long, and are ignored.
+ECHO_WINDOW_SECONDS: Final = 1.0
 # Time to wait for the first connection while setting up an entry.
 SETUP_CONNECT_TIMEOUT: Final = 10.0
 

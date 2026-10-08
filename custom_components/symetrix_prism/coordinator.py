@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
+import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -15,6 +17,7 @@ from .const import (
     CONF_RESYNC_INTERVAL,
     DEFAULTS,
     DOMAIN,
+    ECHO_WINDOW_SECONDS,
     SUBENTRY_ZONE,
 )
 from .models import ZoneConfig, resolve_zone
@@ -67,6 +70,10 @@ class SymetrixCoordinator(DataUpdateCoordinator[dict[int, int]]):
             ),
         )
         self._lost_logged = False
+        # Control number -> (value written, monotonic deadline) for writes
+        # whose push echo has not arrived yet.
+        self._pending_writes: dict[int, tuple[int, float]] = {}
+        self._unsub_echo_check: CALLBACK_TYPE | None = None
         # Device registry id of the DSP device, set during setup.
         self.dsp_device_id: str | None = None
 
@@ -98,6 +105,7 @@ class SymetrixCoordinator(DataUpdateCoordinator[dict[int, int]]):
             for cn, v in values.items()
             if v is not None and cn in self.control_numbers
         }
+        self._drop_stale_echoes(updates)
         if not updates or self.data is None:
             return
         if all(self.data.get(cn) == v for cn, v in updates.items()):
@@ -130,10 +138,54 @@ class SymetrixCoordinator(DataUpdateCoordinator[dict[int, int]]):
         """Record a value just written, until the DSP confirms it."""
         if self.data is None or self.data.get(cn) == value:
             return
+        self._pending_writes[cn] = (value, time.monotonic() + ECHO_WINDOW_SECONDS)
+        if self._unsub_echo_check is None:
+            self._unsub_echo_check = async_call_later(
+                self.hass, ECHO_WINDOW_SECONDS, self._async_check_echoes
+            )
         self.data[cn] = value
         self.async_update_listeners()
 
+    def _drop_stale_echoes(self, updates: dict[int, int]) -> None:
+        """Remove pushes that are echoes of values older than our last write.
+
+        The DSP pushes each value it held at push time, so while a burst of
+        writes is in flight it can report an earlier value after a newer one
+        was written. Applying it would make the volume jump back and break
+        stepping from the current value.
+        """
+        now = time.monotonic()
+        for cn, value in list(updates.items()):
+            if (pending := self._pending_writes.get(cn)) is None:
+                continue
+            written, deadline = pending
+            if value == written or now >= deadline:
+                del self._pending_writes[cn]
+            else:
+                del updates[cn]
+
+    @callback
+    def _async_check_echoes(self, _now: datetime) -> None:
+        """Resync if a write was never confirmed by a push."""
+        self._unsub_echo_check = None
+        now = time.monotonic()
+        expired = [cn for cn, (_, end) in self._pending_writes.items() if end <= now]
+        for cn in expired:
+            del self._pending_writes[cn]
+        if expired:
+            self.config_entry.async_create_background_task(
+                self.hass, self.async_request_refresh(), "symetrix echo resync"
+            )
+        if self._pending_writes:
+            next_deadline = min(end for _, end in self._pending_writes.values())
+            self._unsub_echo_check = async_call_later(
+                self.hass, max(next_deadline - now, 0.05), self._async_check_echoes
+            )
+
     async def async_shutdown(self) -> None:
         """Close the connection."""
+        if self._unsub_echo_check is not None:
+            self._unsub_echo_check()
+            self._unsub_echo_check = None
         await super().async_shutdown()
         await self.client.close()

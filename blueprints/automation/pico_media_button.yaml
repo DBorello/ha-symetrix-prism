@@ -1,0 +1,238 @@
+blueprint:
+  name: Lutron Pico media button
+  description: >-
+    One Lutron Pico raise or lower button controls a media player
+    (create one automation per button).
+
+
+    * **Tap** — volume up/down one step. If the player is off it turns on;
+    if muted it unmutes.
+
+    * **Hold** — keep changing the volume until the button is released
+    (stops after *Maximum hold steps* in case a release is lost).
+
+    * **Double tap raise** — next source (from the player's own source list).
+
+    * **Double tap lower** — power off.
+
+
+    A tap acts when the button is released, after the double-tap window, so
+    a double tap never changes the volume first. Releases are triggers
+    (restart mode), so a hold always stops when the button is let go.
+  domain: automation
+  author: Dan Borello
+  source_url: https://github.com/DBorello/ha-symetrix-prism/blob/main/blueprints/automation/pico_media_button.yaml
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    pico:
+      name: Pico remote
+      selector:
+        device:
+          integration: lutron_caseta
+    button:
+      name: Button
+      selector:
+        select:
+          options:
+            - label: Raise (volume up, double tap = next source)
+              value: raise
+            - label: Lower (volume down, double tap = power off)
+              value: lower
+    media_player:
+      name: Media player
+      selector:
+        entity:
+          domain: media_player
+    timing:
+      name: Timing
+      icon: mdi:timer-outline
+      collapsed: true
+      input:
+        hold_time:
+          name: Hold time
+          description: A press longer than this is a hold.
+          default: 0.4
+          selector:
+            number:
+              min: 0.2
+              max: 1.5
+              step: 0.05
+              unit_of_measurement: s
+        double_tap_window:
+          name: Double-tap window
+          description: >-
+            Time after a tap's release in which a second press makes it a
+            double tap. Taps act after this delay.
+          default: 0.3
+          selector:
+            number:
+              min: 0.15
+              max: 1
+              step: 0.05
+              unit_of_measurement: s
+        repeat_interval:
+          name: Hold repeat interval
+          default: 0.25
+          selector:
+            number:
+              min: 0.1
+              max: 1
+              step: 0.05
+              unit_of_measurement: s
+        max_steps:
+          name: Maximum hold steps
+          description: Safety limit on volume steps per hold.
+          default: 20
+          selector:
+            number:
+              min: 1
+              max: 60
+
+# Each press or release restarts the run: a release ends a hold at once.
+mode: restart
+max_exceeded: silent
+
+triggers:
+  - trigger: event
+    id: press
+    event_type: lutron_caseta_button_event
+    event_data:
+      device_id: !input pico
+      button_type: !input button
+      action: press
+  - trigger: event
+    id: release
+    event_type: lutron_caseta_button_event
+    event_data:
+      device_id: !input pico
+      button_type: !input button
+      action: release
+
+variables:
+  player: !input media_player
+  button: !input button
+  hold_time: !input hold_time
+  window: !input double_tap_window
+  # `this` is this automation's state when the trigger fired: the previous
+  # trigger's time, and whether that run (a press waiting out the hold time,
+  # or a tap release waiting out the double-tap window) is still running.
+  last_triggered: "{{ this.attributes.last_triggered if this else none }}"
+  since_last: >-
+    {{ (now() - as_datetime(last_triggered)).total_seconds()
+       if last_triggered else 999 }}
+  previous_running: "{{ (this.attributes.current | int(0)) > 0 if this else false }}"
+  step_action: "media_player.volume_{{ 'up' if button == 'raise' else 'down' }}"
+
+actions:
+  - choose:
+      # Second press of a double tap (a tap's window was still open): end
+      # now; the release performs the double-tap action.
+      - conditions:
+          - condition: trigger
+            id: press
+          - "{{ previous_running and since_last < window }}"
+        sequence: []
+
+      # Press: wait out the hold time. A release before then restarts the
+      # run (a tap); otherwise it is a hold.
+      - conditions:
+          - condition: trigger
+            id: press
+        sequence:
+          - delay:
+              seconds: !input hold_time
+          - if:
+              - condition: state
+                entity_id: !input media_player
+                state: "off"
+            then:
+              - action: media_player.turn_on
+                target:
+                  entity_id: !input media_player
+          - if:
+              - condition: state
+                entity_id: !input media_player
+                attribute: is_volume_muted
+                state: true
+            then:
+              - action: media_player.volume_mute
+                target:
+                  entity_id: !input media_player
+                data:
+                  is_volume_muted: false
+          - repeat:
+              count: !input max_steps
+              sequence:
+                - action: "{{ step_action }}"
+                  target:
+                    entity_id: !input media_player
+                - delay:
+                    seconds: !input repeat_interval
+
+      # Release of a tap whose press run was still waiting: a tap. Wait for
+      # a possible second press (which restarts this run), then act.
+      - conditions:
+          - condition: trigger
+            id: release
+          - "{{ since_last < hold_time and previous_running }}"
+        sequence:
+          - delay:
+              seconds: !input double_tap_window
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input media_player
+                    state: "off"
+                sequence:
+                  - action: media_player.turn_on
+                    target:
+                      entity_id: !input media_player
+              - conditions:
+                  - condition: state
+                    entity_id: !input media_player
+                    attribute: is_volume_muted
+                    state: true
+                sequence:
+                  - action: media_player.volume_mute
+                    target:
+                      entity_id: !input media_player
+                    data:
+                      is_volume_muted: false
+            default:
+              - action: "{{ step_action }}"
+                target:
+                  entity_id: !input media_player
+
+      # Release of the second press of a double tap (its press run ended
+      # at once).
+      - conditions:
+          - condition: trigger
+            id: release
+          - "{{ since_last < hold_time and not previous_running }}"
+        sequence:
+          - if:
+              - "{{ button == 'lower' }}"
+            then:
+              - action: media_player.turn_off
+                target:
+                  entity_id: !input media_player
+            else:
+              - variables:
+                  sources: "{{ state_attr(player, 'source_list') or [] }}"
+                  current: "{{ state_attr(player, 'source') }}"
+                  next_source: >-
+                    {% if current in sources %}
+                      {{ sources[(sources.index(current) + 1) % (sources | length)] }}
+                    {% elif sources %}
+                      {{ sources[0] }}
+                    {% endif %}
+              - if:
+                  - "{{ next_source | length > 0 }}"
+                then:
+                  - action: media_player.select_source
+                    target:
+                      entity_id: !input media_player
+                    data:
+                      source: "{{ next_source }}"
+    # A release after a hold needs nothing: restarting already stopped it.

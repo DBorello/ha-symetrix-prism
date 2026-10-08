@@ -86,6 +86,20 @@ Per zone, the DSP needs a **Matrix Selector output** (its Mute is the zone's pow
 | --- | --- | --- |
 | `media_player.<zone>` | zone device | Power, source, volume, mute. Attributes `zone` and `volume_db`. |
 
+## Lutron Pico remotes
+
+[![Open your Home Assistant instance and show the blueprint import dialog.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FDBorello%2Fha-symetrix-prism%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fpico_media_button.yaml)
+
+The [Lutron Pico media button](blueprints/automation/pico_media_button.yaml) blueprint turns a Pico's raise/lower buttons into zone controls. Create one automation per button:
+
+| Gesture | Raise | Lower |
+| --- | --- | --- |
+| Tap | Volume up — or turn on / unmute if off / muted | Volume down — or turn on / unmute |
+| Hold | Volume keeps rising until released | Volume keeps falling until released |
+| Double tap | Next source | Power off |
+
+Releases are triggers (restart mode), so a hold always stops when the button is let go, and a hold is capped at a number of steps in case a release is lost. A tap acts after a short double-tap window (0.3 s by default), so a double tap never nudges the volume first. Timing is adjustable in the blueprint's *Timing* section. Works with any `media_player`, not just Symetrix zones.
+
 ## Notes and limitations
 
 - The state is `on`/`off`; there is no play/pause or track metadata (the DSP routes and levels audio, it doesn't play it).

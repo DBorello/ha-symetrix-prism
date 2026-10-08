@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from typing import Any
+from unittest.mock import patch
 
 from homeassistant.components.media_player import (
     ATTR_INPUT_SOURCE,
@@ -357,3 +358,53 @@ async def test_zone_overrides(hass: HomeAssistant, mock_prism: MockPrism) -> Non
     assert mock_prism.values[2250] == 48371  # -10 dB
     await hass.config_entries.async_unload(entry.entry_id)
     assert entry.state is ConfigEntryState.NOT_LOADED
+
+
+async def test_volume_step_does_not_wait_for_debounce(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, mock_prism: MockPrism
+) -> None:
+    """Button automations wait for each step; it must not be slowed down."""
+    with patch(
+        "custom_components.symetrix_prism.media_player.VOLUME_DEBOUNCE_SECONDS", 5
+    ):
+        async with asyncio.timeout(1):
+            await call(hass, SERVICE_VOLUME_UP)
+    assert mock_prism.commands("CS") == ["CS 2201 10922"]  # -58 dB
+
+
+async def test_rapid_steps_accumulate(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, mock_prism: MockPrism
+) -> None:
+    mock_prism.set_value(2201, RAW_M30)
+    await until(lambda: state_of(hass).attributes["volume_db"] == -30.0)
+    for _ in range(5):
+        await call(hass, SERVICE_VOLUME_UP)
+    assert state_of(hass).attributes["volume_db"] == -20.0
+    assert mock_prism.values[2201] == RAW_M20
+
+
+async def test_stale_echo_is_ignored(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, mock_prism: MockPrism
+) -> None:
+    mock_prism.set_value(2201, RAW_M30)
+    await until(lambda: state_of(hass).attributes["volume_db"] == -30.0)
+    mock_prism.push_echo = False
+    await call(hass, SERVICE_VOLUME_UP)
+    # The DSP pushes the value it held before the write landed.
+    await mock_prism.inject(f"#02201={RAW_M30:05d}\r")
+    await asyncio.sleep(0.1)
+    assert state_of(hass).attributes["volume_db"] == -28.0
+    # A step taken now starts from -28, not the stale -30.
+    await call(hass, SERVICE_VOLUME_UP)
+    assert state_of(hass).attributes["volume_db"] == -26.0
+
+
+async def test_unconfirmed_write_resyncs(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, mock_prism: MockPrism
+) -> None:
+    mock_prism.push_echo = False
+    with patch("custom_components.symetrix_prism.coordinator.ECHO_WINDOW_SECONDS", 0.2):
+        await call(hass, SERVICE_VOLUME_UP)
+        # Something else changed it without a push reaching us.
+        mock_prism.values[2201] = RAW_M40
+        await until(lambda: state_of(hass).attributes["volume_db"] == -40.0)

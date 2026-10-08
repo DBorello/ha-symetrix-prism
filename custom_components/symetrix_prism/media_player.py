@@ -95,6 +95,7 @@ class SymetrixZoneMediaPlayer(
         self._attr_supported_features = features
         self._volume_target: int | None = None
         self._volume_task: asyncio.Task[None] | None = None
+        self._volume_lock = asyncio.Lock()
 
     def _raw(self, control: str) -> int | None:
         cn = self._zone.cn(control)
@@ -219,20 +220,22 @@ class SymetrixZoneMediaPlayer(
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set the volume; slider bursts are coalesced (last value wins)."""
-        await self._set_volume_db(self._zone.scale.level_to_db(volume))
+        await self._set_volume_db(self._zone.scale.level_to_db(volume), debounce=True)
 
     async def async_volume_up(self) -> None:
         """Raise the volume by one step, never above the maximum."""
         if (db := self._current_db()) is None:
             return
-        await self._set_volume_db(min(db + self._zone.step_db, self._zone.scale.max_db))
+        await self._set_volume_db(
+            min(db + self._zone.step_db, self._zone.scale.max_db), debounce=False
+        )
 
     async def async_volume_down(self) -> None:
         """Lower the volume by one step, not below the minimum."""
         if (db := self._current_db()) is None:
             return
         floor = min(db, self._zone.scale.min_db)
-        await self._set_volume_db(max(db - self._zone.step_db, floor))
+        await self._set_volume_db(max(db - self._zone.step_db, floor), debounce=False)
 
     def _current_db(self) -> float | None:
         """Return the volume to step from, rounded to 0.1 dB.
@@ -245,7 +248,12 @@ class SymetrixZoneMediaPlayer(
             db = self.volume_db
         return None if db is None else round(db, 1)
 
-    async def _set_volume_db(self, db: float) -> None:
+    async def _set_volume_db(self, db: float, *, debounce: bool) -> None:
+        """Set the volume in dB.
+
+        Steps are written at once so button-driven automations are not held
+        up; slider moves (debounce) are coalesced and the last one written.
+        """
         cn = self._zone.cn(CONTROL_VOLUME)
         if cn is None:
             raise ServiceValidationError(
@@ -255,22 +263,29 @@ class SymetrixZoneMediaPlayer(
             )
         self._volume_target = self._zone.scale.db_to_raw(db)
         self.coordinator.async_set_optimistic(cn, self._volume_target)
+        if not debounce:
+            await self._async_write_volume(cn)
+            return
         if self._volume_task is None or self._volume_task.done():
             self._volume_task = self.hass.async_create_task(
-                self._async_flush_volume(cn), eager_start=False
+                self._async_debounced_volume(cn), eager_start=False
             )
         await asyncio.shield(self._volume_task)
 
-    async def _async_flush_volume(self, cn: int) -> None:
+    async def _async_debounced_volume(self, cn: int) -> None:
         await asyncio.sleep(VOLUME_DEBOUNCE_SECONDS)
-        try:
-            while (target := self._volume_target) is not None:
-                await self._call(self.coordinator.client.set(cn, target))
-                if self._volume_target == target:
-                    self._volume_target = None
-        finally:
-            self._volume_target = None
-        self.coordinator.async_update_listeners()
+        await self._async_write_volume(cn)
+
+    async def _async_write_volume(self, cn: int) -> None:
+        """Write the latest volume target; writes never overlap."""
+        async with self._volume_lock:
+            try:
+                while (target := self._volume_target) is not None:
+                    await self._call(self.coordinator.client.set(cn, target))
+                    if self._volume_target == target:
+                        self._volume_target = None
+            finally:
+                self._volume_target = None
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel a pending volume write."""
